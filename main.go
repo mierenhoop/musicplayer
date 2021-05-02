@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+
+	"github.com/bogem/id3v2"
 )
 
 const (
@@ -55,6 +57,10 @@ type track struct {
 			} `json:"format"`
 		} `json:"transcodings"`
 	} `json:"media"`
+
+	User struct {
+		UserName string `json:"username"`
+	} `json:"user"`
 }
 
 func getUserID(user string) int {
@@ -110,16 +116,32 @@ func main() {
 		if err != nil {
 			log.Fatal("Couldn't request audio url")
 		}
-		defer resp.Body.Close()
 
 		path := archive + "/" + user
 		os.MkdirAll(path, os.ModePerm)
-		out, err := os.Create(path + "/" + track.PermaLink + ".mp3")
 
+		path += "/" + track.PermaLink + ".mp3"
+		out, err := os.Create(path)
 		if err != nil {
 			log.Fatal("Couldn't create file")
 		}
-		defer out.Close()
+
 		io.Copy(out, resp.Body)
+
+		resp.Body.Close()
+		out.Close()
+
+		tag, err := id3v2.Open(path, id3v2.Options{Parse: false})
+		if err != nil {
+			log.Fatal("Error while opening mp3 file: ", err)
+		}
+		defer tag.Close()
+
+		tag.SetArtist(track.User.UserName)
+		tag.SetTitle(track.Title)
+
+		if err = tag.Save(); err != nil {
+			log.Fatal("Error while saving a tag: ", err)
+		}
 	}
 }
