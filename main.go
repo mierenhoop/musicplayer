@@ -24,15 +24,8 @@ func getRandomID() string {
 	return ids[rand.Intn(len(ids))]
 }
 
-func getJson(path string, query map[string]string) []byte {
-	values := url.Values{}
-
-	for k, v := range query {
-		values.Set(k, v)
-	}
-	values.Set("client_id", getRandomID())
-
-	res, err := http.Get(path + "?" + values.Encode())
+func requestBytes(link string) []byte {
+	res, err := http.Get(link)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -45,7 +38,18 @@ func getJson(path string, query map[string]string) []byte {
 	return data
 }
 
+func getJson(path string, query map[string]string) []byte {
+	values := url.Values{}
+
+	for k, v := range query {
+		values.Set(k, v)
+	}
+	values.Set("client_id", getRandomID())
+	return requestBytes(path + "?" + values.Encode())
+}
+
 type track struct {
+	Artwork   string `json:"artwork_url"`
 	Title     string `json:"title"`
 	PermaLink string `json:"permalink"`
 
@@ -59,6 +63,7 @@ type track struct {
 	} `json:"media"`
 
 	User struct {
+		Avatar   string `json:"avatar_url"`
 		UserName string `json:"username"`
 	} `json:"user"`
 }
@@ -111,7 +116,7 @@ func main() {
 	user := os.Args[2]
 
 	tracks := getUserTracks(getUserID(user))
-	for _, track := range tracks[0:2] {
+	for _, track := range tracks {
 		resp, err := http.Get(getTrackMP3(track))
 		if err != nil {
 			log.Fatal("Couldn't request audio url")
@@ -139,6 +144,24 @@ func main() {
 
 		tag.SetArtist(track.User.UserName)
 		tag.SetTitle(track.Title)
+
+		var artwork string
+		if track.Artwork != "" {
+			artwork = track.Artwork
+		} else if track.User.Avatar != "" {
+			artwork = track.User.Avatar
+		}
+
+		if artwork != "" {
+			pic := id3v2.PictureFrame{
+				Encoding:    id3v2.EncodingUTF8,
+				MimeType:    "image/jpeg",
+				PictureType: id3v2.PTFileIcon,
+				Description: "Front cover",
+				Picture:     requestBytes(artwork),
+			}
+			tag.AddAttachedPicture(pic)
+		}
 
 		if err = tag.Save(); err != nil {
 			log.Fatal("Error while saving a tag: ", err)
